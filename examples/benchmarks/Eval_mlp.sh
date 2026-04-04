@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euo pipefail
+
+EXAMPLES_DIR="/mnt/ccnas2/bdp/lg524/neural_sorting/examples"
+SCENE_DIR="$EXAMPLES_DIR/data/360_v2"
+
+# Source checkpoints from existing complex_mlp experiments.
+CKPT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint"
+
+# Write current run outputs to a separate folder.
+RESULT_DIR="$EXAMPLES_DIR/results"
+TYPE="mlp-nonclone"
+SCENE_LIST="bicycle bonsai counter kitchen room"
+RENDER_TRAJ_PATH="ellipse"
+
+for SCENE in $SCENE_LIST;
+do
+    if [ "$SCENE" = "bonsai" ] || [ "$SCENE" = "counter" ] || [ "$SCENE" = "kitchen" ] || [ "$SCENE" = "room" ]; then
+        DATA_FACTOR=2
+    else
+        DATA_FACTOR=4 #4
+    fi
+    
+    echo "Running $SCENE"
+
+    # #  train without eval
+    # CUDA_VISIBLE_DEVICES=3 python load_simple_trainer.py default --eval_steps -1 --disable_viewer  --type $TYPE --data_factor $DATA_FACTOR \
+    #     --render_traj_path $RENDER_TRAJ_PATH \
+    #     --data_dir data/360_v2/$SCENE/ \
+    #     --result_dir $RESULT_DIR/$SCENE/$TYPE
+
+    # run eval and render: load checkpoints from results/benchmark
+    # support both:
+    #   results/benchmark/<scene>/ckpts/ckpt_*_rank0.pt
+    #   results/benchmark/<scene>/<exp>/ckpts/ckpt_*_rank0.pt
+    mapfile -t CKPTS < <(
+        {
+            find "$CKPT_ROOT" -type f -path "*/$SCENE/ckpts/ckpt_*_rank0.pt"
+            find "$CKPT_ROOT" -type f -path "*/$SCENE/*/ckpts/ckpt_*_rank0.pt"
+        } | sort -V | uniq
+    )
+
+    if [ ${#CKPTS[@]} -eq 0 ]; then
+        echo "No checkpoint found for scene=$SCENE under $CKPT_ROOT, skipping."
+        continue
+    fi
+
+    for CKPT in "${CKPTS[@]}";
+    do
+       CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=0 python "$EXAMPLES_DIR/load_simple_trainer.py" default --disable_viewer --type "$TYPE" --data_factor "$DATA_FACTOR" \
+            --render_traj_path "$RENDER_TRAJ_PATH" \
+            --data_dir "$SCENE_DIR/$SCENE/" \
+            --result_dir "$RESULT_DIR/$TYPE/$SCENE" \
+            --ckpt "$CKPT"
+            ## --pure_eval
+    done
+done
