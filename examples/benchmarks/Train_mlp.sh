@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-EXAMPLES_DIR="/mnt/ccnas2/bdp/lg524/neural_sorting/examples"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXAMPLES_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SCENE_DIR="$EXAMPLES_DIR/data/360_v2"
 CKPT_ROOT="$EXAMPLES_DIR/results/benchmark"
 
 # Dedicated output root for this script.
-RESULT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint"
+RESULT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint_new"
 TYPE="mlp-nonclone"
 SCENE_LIST="kitchen garden bicycle bonsai counter room"
 RENDER_TRAJ_PATH="ellipse"
@@ -54,6 +55,7 @@ for SCENE in $SCENE_LIST; do
             --render_traj_path "$RENDER_TRAJ_PATH" \
             --data_dir "$SCENE_DIR/$SCENE/" \
             --result_dir "$RESULT_DIR" \
-            --ckpt "$CKPT"
+            --ckpt "$CKPT" \
+            --train_on_ckpt True
     done
 done

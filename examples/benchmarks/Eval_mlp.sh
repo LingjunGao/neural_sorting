@@ -1,11 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 
-EXAMPLES_DIR="/mnt/ccnas2/bdp/lg524/neural_sorting/examples"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXAMPLES_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SCENE_DIR="$EXAMPLES_DIR/data/360_v2"
 
-# Source checkpoints from existing complex_mlp experiments.
-CKPT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint"
+DEFAULT_CKPT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint"
+NEW_CKPT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint_new"
+
+if find "$NEW_CKPT_ROOT" -type f -path "*/ckpts/ckpt_*_rank0.pt" 2>/dev/null | head -n 1 | grep -q .; then
+    CKPT_ROOT="$NEW_CKPT_ROOT"
+    echo "Using fine-tuned checkpoints: $CKPT_ROOT"
+else
+    CKPT_ROOT="$DEFAULT_CKPT_ROOT"
+    echo "mlp_checkpoint_new not found (or empty). Using default checkpoints: $CKPT_ROOT"
+fi
 
 # Write current run outputs to a separate folder.
 RESULT_DIR="$EXAMPLES_DIR/results"
@@ -51,7 +60,8 @@ do
             --render_traj_path "$RENDER_TRAJ_PATH" \
             --data_dir "$SCENE_DIR/$SCENE/" \
             --result_dir "$RESULT_DIR/$TYPE/$SCENE" \
-            --ckpt "$CKPT"
+          --ckpt "$CKPT" \
+          --train_on_ckpt False
             ## --pure_eval
     done
 done

@@ -91,23 +91,40 @@ python -m pip install -r "${EXAMPLES_DIR}/requirements.txt" --no-build-isolation
   python datasets/download_dataset.py
 )
 
-echo "[7/7] Optional benchmark download (Zenodo)"
+echo "[7/7] Downloading benchmark checkpoints from Zenodo"
 RESULTS_DIR="${SCRIPT_DIR}/examples/results"
-BENCHMARK_URL=""
-BENCHMARK_ARCHIVE="${RESULTS_DIR}/mlp_checkpoint.tar.gz"
+ZENODO_RECORD_ID="19420924"
+ZENODO_FILE_BASE_URL="https://zenodo.org/records/${ZENODO_RECORD_ID}/files"
 
-if [[ -n "${BENCHMARK_URL}" ]]; then
-  mkdir -p "${RESULTS_DIR}"
-  echo "Downloading mlp_checkpoint.tar.gz to ${RESULTS_DIR} ..."
-  curl -L --progress-bar --retry 5 -o "${BENCHMARK_ARCHIVE}" "${BENCHMARK_URL}"
-  echo "Extracting archive to ${RESULTS_DIR} ..."
-  tar -xzf "${BENCHMARK_ARCHIVE}" -C "${RESULTS_DIR}"
-  echo "Removing archive ..."
-  rm -f "${BENCHMARK_ARCHIVE}"
-  echo "mlp_checkpoint extracted to ${RESULTS_DIR}"
-else
-  echo "BENCHMARK_URL is empty. Skip benchmark download for now."
+mkdir -p "${RESULTS_DIR}"
+
+download_and_extract() {
+  local archive_name="$1"
+  local archive_url="$2"
+  local extract_dir_hint="$3"
+  local archive_path="${RESULTS_DIR}/${archive_name}"
+
+  if [[ -d "${RESULTS_DIR}/${extract_dir_hint}" ]]; then
+    echo "${extract_dir_hint} already exists under ${RESULTS_DIR}, skipping download."
+    return 0
+  fi
+
+  echo "Downloading ${archive_name} ..."
+  curl -fL --progress-bar --retry 5 -o "${archive_path}" "${archive_url}"
+  echo "Extracting ${archive_name} to ${RESULTS_DIR} ..."
+  tar -xzf "${archive_path}" -C "${RESULTS_DIR}"
+  rm -f "${archive_path}"
+}
+
+# Some uploads used a typo (bechmark.tar.gz). Try benchmark first, then fallback.
+if ! download_and_extract "benchmark.tar.gz" "${ZENODO_FILE_BASE_URL}/benchmark.tar.gz?download=1" "benchmark"; then
+  echo "benchmark.tar.gz not found, trying bechmark.tar.gz ..."
+  download_and_extract "bechmark.tar.gz" "${ZENODO_FILE_BASE_URL}/bechmark.tar.gz?download=1" "benchmark"
 fi
+
+download_and_extract "mlp_checkpoint.tar.gz" "${ZENODO_FILE_BASE_URL}/mlp_checkpoint.tar.gz?download=1" "mlp_checkpoint"
+
+echo "Checkpoint archives extracted under ${RESULTS_DIR}."
 
 echo ""
 echo "Setup complete for ${METHOD_NAME}."

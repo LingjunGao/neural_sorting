@@ -55,6 +55,8 @@ class Config:
     disable_viewer: bool = False
     # Path to the .pt files. If provide, it will skip training and run evaluation only.
     ckpt: Optional[List[str]] = None
+    # If True and --ckpt is provided, run training before evaluation.
+    train_on_ckpt: bool = False
     # Name of compression strategy to use
     compression: Optional[Literal["png"]] = None
     # Render trajectory path
@@ -1352,14 +1354,20 @@ def main(local_rank: int, world_rank, world_size: int, cfg: Config):
         for k in runner.splats.keys():
             runner.splats[k].data = torch.cat([ckpt["splats"][k] for ckpt in ckpts])
 
-        if mlp_loaded:
-            print("[Mode] Found mlp_params.pth -> joint training (Gaussian + MLP).")
+        step = ckpts[0]["step"]
+
+        if cfg.train_on_ckpt:
+            if mlp_loaded:
+                print("[Mode] train_on_ckpt=True + found mlp_params.pth -> joint training (Gaussian + MLP).")
+            else:
+                print("[Mode] train_on_ckpt=True + no mlp_params.pth -> train with random-initialized MLP.")
             runner.train()
         else:
-            print("[Mode] No mlp_params.pth found -> train with random-initialized MLP.")
-            runner.train()
+            if mlp_loaded:
+                print("[Mode] train_on_ckpt=False + found mlp_params.pth -> evaluation only.")
+            else:
+                print("[Mode] train_on_ckpt=False + no mlp_params.pth -> evaluation with random-initialized MLP.")
 
-        step = ckpts[0]["step"]
         runner.eval(step=step)
         runner.print_averages()
         # runner.render_traj(step=step)
