@@ -86,10 +86,26 @@ python -m pip install -e "${SCRIPT_DIR}" --no-build-isolation
 
 echo "[6/7] Installing examples requirements and downloading dataset..."
 python -m pip install -r "${EXAMPLES_DIR}/requirements.txt" --no-build-isolation
-(
-  cd "${EXAMPLES_DIR}"
-  python datasets/download_dataset.py
-)
+DATASET_ROOT="${EXAMPLES_DIR}/data/360_v2"
+REQUIRED_SCENES=("bicycle" "bonsai" "counter" "garden" "kitchen" "room")
+
+dataset_ready=1
+for scene in "${REQUIRED_SCENES[@]}"; do
+  if [[ ! -d "${DATASET_ROOT}/${scene}" ]]; then
+    dataset_ready=0
+    break
+  fi
+done
+
+if [[ ${dataset_ready} -eq 1 ]]; then
+  echo "Dataset already exists at ${DATASET_ROOT}. Skip downloading."
+else
+  echo "Dataset not complete at ${DATASET_ROOT}. Downloading mipnerf360 dataset..."
+  (
+    cd "${EXAMPLES_DIR}"
+    python datasets/download_dataset.py
+  )
+fi
 
 echo "[7/7] Downloading benchmark checkpoints from Zenodo"
 RESULTS_DIR="${SCRIPT_DIR}/examples/results"
@@ -123,6 +139,11 @@ if ! download_and_extract "benchmark.tar.gz" "${ZENODO_FILE_BASE_URL}/benchmark.
 fi
 
 download_and_extract "mlp_checkpoint.tar.gz" "${ZENODO_FILE_BASE_URL}/mlp_checkpoint.tar.gz?download=1" "mlp_checkpoint"
+
+# Some checkpoint archives extract as "non_clone". Normalize folder name.
+if [[ -d "${RESULTS_DIR}/non_clone" && ! -d "${RESULTS_DIR}/mlp_checkpoint" ]]; then
+  mv "${RESULTS_DIR}/non_clone" "${RESULTS_DIR}/mlp_checkpoint"
+fi
 
 echo "Checkpoint archives extracted under ${RESULTS_DIR}."
 
