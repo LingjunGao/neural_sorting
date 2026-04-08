@@ -20,11 +20,15 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
 fi
 
 if ! command -v conda >/dev/null 2>&1; then
-  echo "[ERROR] conda command not found. Please install Miniconda/Anaconda first."
+  echo "[WARN] conda command not found. Skipping setup to avoid breaking your shell session."
+  echo "[SETUP] Install Miniconda (brief):"
+  echo "        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+  echo "        bash Miniconda3-latest-Linux-x86_64.sh"
+  echo "        source ~/.bashrc"
   if [[ ${is_sourced} -eq 1 ]]; then
-    return 1
+    return 0
   else
-    exit 1
+    exit 0
   fi
 fi
 
@@ -34,10 +38,15 @@ eval "$(conda shell.bash hook)"
 echo "[1/7] Installing OS packages (requires sudo)..."
 if command -v sudo >/dev/null 2>&1; then
   sudo apt-get update
-  sudo apt-get install -y git wget build-essential gcc-11 g++-11 curl
+  sudo apt-get install -y git wget build-essential gcc-11 g++-11 curl unzip
 else
-  apt-get update
-  apt-get install -y git wget build-essential gcc-11 g++-11 curl
+  if [[ "$(id -u)" -eq 0 ]]; then
+    apt-get update
+    apt-get install -y git wget build-essential gcc-11 g++-11 curl unzip
+  else
+    echo "[WARN] No sudo access and not root; skipping apt package install."
+    echo "[SETUP] Please ensure these tools are available: git wget curl unzip gcc-11 g++-11"
+  fi
 fi
 
 echo "[2/7] Creating conda environment (${ENV_NAME}) if needed..."

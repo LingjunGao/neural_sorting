@@ -21,9 +21,13 @@ RESULT_DIR="$EXAMPLES_DIR/results"
 TYPE="mlp-nonclone"
 SCENE_LIST="bicycle bonsai counter kitchen room"
 RENDER_TRAJ_PATH="ellipse"
+FAILED_SCENES=()
+DONE_SCENES=()
 
 for SCENE in $SCENE_LIST;
 do
+    SCENE_FAILED=0
+
     if [ "$SCENE" = "bonsai" ] || [ "$SCENE" = "counter" ] || [ "$SCENE" = "kitchen" ] || [ "$SCENE" = "room" ]; then
         DATA_FACTOR=2
     else
@@ -56,12 +60,29 @@ do
 
     for CKPT in "${CKPTS[@]}";
     do
-       CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=0 python "$EXAMPLES_DIR/load_simple_trainer.py" default --disable_viewer --type "$TYPE" --data_factor "$DATA_FACTOR" \
+        if ! CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=0 python "$EXAMPLES_DIR/load_simple_trainer.py" default --disable_viewer --type "$TYPE" --data_factor "$DATA_FACTOR" \
             --render_traj_path "$RENDER_TRAJ_PATH" \
             --data_dir "$SCENE_DIR/$SCENE/" \
             --result_dir "$RESULT_DIR/$TYPE/$SCENE" \
-          --ckpt "$CKPT" \
-          --train_on_ckpt False
-            ## --pure_eval
+            --ckpt "$CKPT" \
+            --train_on_ckpt False; then
+            echo "[WARN] Evaluation failed for scene=$SCENE, ckpt=$CKPT"
+            echo "[WARN] Skipping remaining checkpoints for $SCENE and continuing to next scene."
+            SCENE_FAILED=1
+            break
+        fi
+        ## --pure_eval
     done
+
+    if [ "$SCENE_FAILED" -eq 1 ]; then
+        FAILED_SCENES+=("$SCENE")
+        continue
+    fi
+
+    DONE_SCENES+=("$SCENE")
 done
+
+echo "============================================================"
+echo "Evaluation finished."
+echo "Successful scenes: ${DONE_SCENES[*]:-none}"
+echo "Failed scenes: ${FAILED_SCENES[*]:-none}"
