@@ -85,7 +85,7 @@ fi
 
 echo "Installing PyTorch for CUDA 11.8..."
 python -m pip install torch==2.1.2+cu118 torchvision==0.16.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
-python -m pip install --no-cache-dir "numpy==1.26.4" "setuptools==69.5.1" "wheel<0.43" ninja packaging
+python -m pip install --no-cache-dir "numpy==1.26.4" "setuptools==69.5.1" "wheel<0.43" ninja packaging nerfacc
 
 echo "[5/7] Installing ${METHOD_NAME} from source..."
 export CC=/usr/bin/gcc-11
@@ -129,13 +129,20 @@ download_and_extract() {
   local extract_dir_hint="$3"
   local archive_path="${RESULTS_DIR}/${archive_name}"
 
+  # Skip if already extracted.
   if [[ -d "${RESULTS_DIR}/${extract_dir_hint}" ]]; then
     echo "${extract_dir_hint} already exists under ${RESULTS_DIR}, skipping download."
     return 0
   fi
 
-  echo "Downloading ${archive_name} ..."
-  curl -fL --progress-bar --retry 5 -o "${archive_path}" "${archive_url}"
+  # Skip download if archive already present (e.g. previous interrupted run).
+  if [[ -f "${archive_path}" ]]; then
+    echo "${archive_name} already downloaded. Skipping download, extracting..."
+  else
+    echo "Downloading ${archive_name} ..."
+    curl -fL --progress-bar --retry 5 -o "${archive_path}" "${archive_url}"
+  fi
+
   echo "Extracting ${archive_name} to ${RESULTS_DIR} ..."
   tar -xzf "${archive_path}" -C "${RESULTS_DIR}"
   rm -f "${archive_path}"
