@@ -1263,18 +1263,7 @@ class Runner:
             # radius_clip=3.0,  # skip GSs that have small image radius (in pixels)
         )  # [1, H, W, 3]
         return render_colors[0].cpu().numpy()
-    def print_averages(self):
-        if self.max_list:
-            avg_max = sum(self.max_list) / len(self.max_list)
-            avg_min = sum(self.min_list) / len(self.min_list)
-            avg_mean = sum(self.mean_list) / len(self.mean_list)
-            avg_sum = sum(self.sum_list) / len(self.sum_list)
-            print("平均max_range:", avg_max)
-            print("平均min_range:", avg_min)
-            print("平均mean_range:", avg_mean)
-            print("平均sum_range:", avg_sum)
-        else:
-            print("没有数据。")
+
 
 
 def main(local_rank: int, world_rank, world_size: int, cfg: Config):
@@ -1369,7 +1358,6 @@ def main(local_rank: int, world_rank, world_size: int, cfg: Config):
                 print("[Mode] train_on_ckpt=False + no mlp_params.pth -> evaluation with random-initialized MLP.")
 
         runner.eval(step=step)
-        runner.print_averages()
         # runner.render_traj(step=step)
         # if cfg.compression is not None:
         #     runner.run_compression(step=step)
