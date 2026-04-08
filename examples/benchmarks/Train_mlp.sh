@@ -56,6 +56,6 @@ for SCENE in $SCENE_LIST; do
             --data_dir "$SCENE_DIR/$SCENE/" \
             --result_dir "$RESULT_DIR" \
             --ckpt "$CKPT" \
-            --train_on_ckpt True
+            --train_on_ckpt
     done
 done

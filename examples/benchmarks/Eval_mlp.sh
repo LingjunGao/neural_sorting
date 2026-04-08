@@ -64,8 +64,7 @@ do
             --render_traj_path "$RENDER_TRAJ_PATH" \
             --data_dir "$SCENE_DIR/$SCENE/" \
             --result_dir "$RESULT_DIR/$TYPE/$SCENE" \
-            --ckpt "$CKPT" \
-            --train_on_ckpt False; then
+            --ckpt "$CKPT"; then
             echo "[WARN] Evaluation failed for scene=$SCENE, ckpt=$CKPT"
             echo "[WARN] Skipping remaining checkpoints for $SCENE and continuing to next scene."
             SCENE_FAILED=1
