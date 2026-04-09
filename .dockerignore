@@ -1,0 +1,18 @@
+# Docker-related
+.git
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+build/
+dist/
+*.tar.gz
+
+# Large runtime data (mount at runtime instead)
+examples/data/
+examples/results/
+
+# Conda / venv (not needed inside Docker)
+miniconda3/
+.conda/
+venv/
