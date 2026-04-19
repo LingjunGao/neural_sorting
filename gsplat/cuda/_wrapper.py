@@ -458,6 +458,7 @@ def rasterize_to_pixels(
     packed: bool = False,
     absgrad: bool = False,
     use_training_kernels: bool = False,
+    mlp_outs: Optional[Tensor] = None,  # [C, N] or [nnz]
 ) -> Tuple[Tensor, Tensor]:
     """Rasterizes Gaussians to pixels.
 
@@ -563,6 +564,7 @@ def rasterize_to_pixels(
         conics.contiguous(),
         colors.contiguous(),
         opacities.contiguous(),
+        mlp_outs.contiguous() if mlp_outs is not None else None,
         backgrounds,
         masks,
         image_width,
@@ -592,6 +594,7 @@ def rasterize_to_indices_in_range(
     tile_size: int,
     isect_offsets: Tensor,  # [C, tile_height, tile_width]
     flatten_ids: Tensor,  # [n_isects]
+    mlp_outs: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor, Tensor]:
     """Rasterizes a batch of Gaussians to images but only returns the indices.
 
@@ -893,6 +896,7 @@ class _RasterizeToPixels(torch.autograd.Function):
         conics: Tensor,  # [C, N, 3]
         colors: Tensor,  # [C, N, D]
         opacities: Tensor,  # [C, N]
+        mlp_outs: Optional[Tensor],  # [C, N] or [nnz]
         backgrounds: Tensor,  # [C, D], Optional
         masks: Tensor,  # [C, tile_height, tile_width], Optional
         width: int,
@@ -1728,6 +1732,7 @@ def rasterize_to_pixels_2dgs(
         ray_transforms.contiguous(),
         colors.contiguous(),
         opacities.contiguous(),
+        mlp_outs.contiguous() if mlp_outs is not None else None,
         normals.contiguous(),
         densify.contiguous(),
         backgrounds,

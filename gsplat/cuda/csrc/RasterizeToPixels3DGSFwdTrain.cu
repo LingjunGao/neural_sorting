@@ -31,7 +31,8 @@ __global__ void rasterize_to_pixels_3dgs_fwd_train_kernel(
 	const int32_t *__restrict__ flatten_ids,
 	scalar_t *__restrict__ render_colors,
 	scalar_t *__restrict__ render_alphas,
-	int32_t *__restrict__ last_ids
+	int32_t *__restrict__ last_ids,
+	const float *__restrict__ mlp_outs
 ) {
 	auto block = cg::this_thread_block();
 	int32_t camera_id = block.group_index().x;
@@ -115,19 +116,25 @@ __global__ void rasterize_to_pixels_3dgs_fwd_train_kernel(
 			const float sigma = 0.5f * (conic.x * delta.x * delta.x +
 										conic.z * delta.y * delta.y) +
 								conic.y * delta.x * delta.y;
-			float alpha = min(0.999f, opac * expf(-sigma));
-			if (sigma < 0.f || alpha < 1.f / 255.f) {
-				continue;
-			}
-
-			const float next_T = T * (1.0f - alpha);
-			if (next_T <= 1e-4f) {
-				done = true;
-				break;
-			}
-
 			int32_t g = id_batch[t];
-			const float vis = alpha * T;
+float alpha;
+float vis;
+float next_T = T;
+if (mlp_outs != nullptr) {
+alpha = min(0.999f, opac * expf(-sigma)) * mlp_outs[g];
+if (sigma < 0.f || alpha < 1.f / 255.f) continue;
+vis = alpha;
+next_T = T + alpha; 
+} else {
+alpha = min(0.999f, opac * expf(-sigma));
+if (sigma < 0.f || alpha < 1.f / 255.f) continue;
+next_T = T * (1.0f - alpha);
+if (next_T <= 1e-4f) {
+done = true;
+break;
+}
+vis = alpha * T;
+}
 			const float *c_ptr = colors + g * CDIM;
 #pragma unroll
 			for (uint32_t k = 0; k < CDIM; ++k) {
@@ -139,15 +146,24 @@ __global__ void rasterize_to_pixels_3dgs_fwd_train_kernel(
 	}
 
 	if (inside) {
-		render_alphas[pix_id] = 1.0f - T;
+if (mlp_outs != nullptr) {
+float sum_alpha = T - 1.0f; // Since T initialized to 1.0f, total alpha is T-1
+render_alphas[pix_id] = sum_alpha;
 #pragma unroll
-		for (uint32_t k = 0; k < CDIM; ++k) {
-			render_colors[pix_id * CDIM + k] =
-				backgrounds == nullptr ? pix_out[k]
-									   : (pix_out[k] + T * backgrounds[k]);
-		}
-		last_ids[pix_id] = static_cast<int32_t>(cur_idx);
-	}
+for (uint32_t k = 0; k < CDIM; ++k) {
+render_colors[pix_id * CDIM + k] = pix_out[k] / (sum_alpha + 1e-10f); // Normalize logic from _torch_impl.py
+}
+} else {
+render_alphas[pix_id] = 1.0f - T;
+#pragma unroll
+for (uint32_t k = 0; k < CDIM; ++k) {
+render_colors[pix_id * CDIM + k] =
+backgrounds == nullptr ? pix_out[k]
+   : (pix_out[k] + T * backgrounds[k]);
+}
+}
+last_ids[pix_id] = static_cast<int32_t>(cur_idx);
+}
 }
 
 template <uint32_t CDIM>
@@ -165,7 +181,8 @@ void launch_rasterize_to_pixels_3dgs_fwd_train_kernel(
 	const at::Tensor flatten_ids,
 	at::Tensor renders,
 	at::Tensor alphas,
-	at::Tensor last_ids
+	at::Tensor last_ids,
+	const at::optional<at::Tensor> mlp_outs
 ) {
 	bool packed = means2d.dim() == 2;
 
@@ -215,8 +232,9 @@ void launch_rasterize_to_pixels_3dgs_fwd_train_kernel(
 			flatten_ids.data_ptr<int32_t>(),
 			renders.data_ptr<float>(),
 			alphas.data_ptr<float>(),
-			last_ids.data_ptr<int32_t>()
-		);
+			last_ids.data_ptr<int32_t>(),
+		mlp_outs.has_value() ? mlp_outs.value().data_ptr<float>() : nullptr
+	); 
 }
 
 #define __INS_TRAIN__(CDIM)                                                    \
@@ -233,8 +251,9 @@ void launch_rasterize_to_pixels_3dgs_fwd_train_kernel(
 		const at::Tensor tile_offsets,                                         \
 		const at::Tensor flatten_ids,                                          \
 		at::Tensor renders,                                                    \
-		at::Tensor alphas,                                                     \
-		at::Tensor last_ids                                                    \
+		at::Tensor alphas, \
+		at::Tensor last_ids, \
+		const at::optional<at::Tensor> mlp_outs \
 	);
 
 __INS_TRAIN__(1)

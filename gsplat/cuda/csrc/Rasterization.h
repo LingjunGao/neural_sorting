@@ -33,7 +33,8 @@ void launch_rasterize_to_pixels_3dgs_fwd_kernel(
     // outputs
     at::Tensor renders, // [C, image_height, image_width, channels]
     at::Tensor alphas,  // [C, image_height, image_width]
-    at::Tensor last_ids // [C, image_height, image_width]
+    at::Tensor last_ids, // [C, image_height, image_width]
+    const at::optional<at::Tensor> mlp_outs
 );
 
 template <uint32_t CDIM>
@@ -55,7 +56,8 @@ void launch_rasterize_to_pixels_3dgs_fwd_train_kernel(
     // outputs
     at::Tensor renders, // [C, image_height, image_width, channels]
     at::Tensor alphas,  // [C, image_height, image_width]
-    at::Tensor last_ids // [C, image_height, image_width]
+    at::Tensor last_ids, // [C, image_height, image_width]
+    const at::optional<at::Tensor> mlp_outs
 );
 
 template <uint32_t CDIM>

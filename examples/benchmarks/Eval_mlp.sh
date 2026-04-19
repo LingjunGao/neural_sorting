@@ -64,7 +64,7 @@ do
 
     for CKPT in "${CKPTS[@]}";
     do
-        OUTPUT=$(CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=0 python "$EXAMPLES_DIR/load_simple_trainer.py" default --disable_viewer --type "$TYPE" --data_factor "$DATA_FACTOR" \
+        OUTPUT=$(CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=0 /mnt/ccnas2/bdp/lg524/miniconda3/envs/gsplat/bin/python "$EXAMPLES_DIR/load_simple_trainer.py" default --disable_viewer --type "$TYPE" --data_factor "$DATA_FACTOR" \
             --render_traj_path "$RENDER_TRAJ_PATH" \
             --data_dir "$SCENE_DIR/$SCENE/" \
             --result_dir "$RESULT_DIR/$TYPE/$SCENE" \

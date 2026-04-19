@@ -38,6 +38,8 @@ def rasterization(
     Ks: Tensor,  # [C, 3, 3]
     width: int,
     height: int,
+    mlp: Optional[torch.nn.Module] = None,
+    depths: Optional[Tensor] = None,
     near_plane: float = 0.01,
     far_plane: float = 1e10,
     radius_clip: float = 0.0,
@@ -354,6 +356,40 @@ def rasterization(
         }
     )
 
+    
+
+    
+
+    # === NEW: Evaluate Complex MLP before calling CUDA Rasterizer ===
+    mlp_vis = None
+    if mlp is not None and depths is not None:
+        from .cuda._torch_impl import extract_view
+        
+        C_dim, N_dim = (1, opacities.shape[0]) if opacities.dim() == 1 else opacities.shape[:2]
+        
+        if packed:
+            batch_depths = depths[camera_ids, gaussian_ids].reshape(-1, 1).contiguous()
+            batch_opacities = opacities[camera_ids, gaussian_ids].reshape(-1, 1).contiguous()
+        else:
+            batch_depths = depths.reshape(-1, 1).contiguous()
+            batch_opacities = opacities.reshape(-1, 1).contiguous()
+
+        view_dir, _ = extract_view(viewmats, batch_depths.shape[0], True)
+        
+        from torch.utils.checkpoint import checkpoint
+        L = batch_depths.shape[0]
+        mlp_vis = batch_opacities.new_empty(L)
+        chunk_size = 1000_000
+        chunks = (L + chunk_size - 1) // chunk_size
+        for i in range(chunks):
+            start = i * chunk_size
+            end = min((i + 1) * chunk_size, L)
+            with torch.no_grad():
+                chunk_vis = checkpoint(mlp, batch_depths[start:end], view_dir[start:end], batch_opacities[start:end], use_reentrant=False)
+            mlp_vis[start:end] = chunk_vis.flatten()
+            
+        if not packed:
+            mlp_vis = mlp_vis.reshape(C_dim, N_dim)
     # Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
     if sh_degree is None:
         # Colors are post-activation values, with shape [N, D] or [C, N, D]
@@ -563,6 +599,7 @@ def rasterization(
                 backgrounds=backgrounds_chunk,
                 packed=packed,
                 absgrad=absgrad,
+                mlp_outs=mlp_vis,
             )
             render_colors.append(render_colors_)
             render_alphas.append(render_alphas_)
@@ -582,6 +619,7 @@ def rasterization(
             backgrounds=backgrounds,
             packed=packed,
             absgrad=absgrad,
+            mlp_outs=mlp_vis,
         )
     torch.cuda.synchronize()
     raster_time = time.time()-tic
@@ -725,6 +763,35 @@ def _rasterization(
     #     depth_float[i] = struct.unpack("f", struct.pack("i", depth_id[i].item()))[0]
 
 
+    
+
+    
+
+    # === NEW: Evaluate Complex MLP before calling CUDA Rasterizer ===
+    mlp_vis = None
+    if mlp is not None and depths is not None:
+        from .cuda._torch_impl import extract_view
+        
+        C_dim, N_dim = (1, opacities.shape[0]) if opacities.dim() == 1 else opacities.shape[:2]
+        
+        batch_depths = depths.reshape(-1, 1).contiguous()
+        batch_opacities = opacities.reshape(-1, 1).contiguous()
+
+        view_dir, _ = extract_view(viewmats, batch_depths.shape[0], True)
+        
+        from torch.utils.checkpoint import checkpoint
+        L = batch_depths.shape[0]
+        mlp_vis = batch_opacities.new_empty(L)
+        chunk_size = 1000_000
+        chunks = (L + chunk_size - 1) // chunk_size
+        for i in range(chunks):
+            start = i * chunk_size
+            end = min((i + 1) * chunk_size, L)
+            with torch.no_grad():
+                chunk_vis = checkpoint(mlp, batch_depths[start:end], view_dir[start:end], batch_opacities[start:end], use_reentrant=False)
+            mlp_vis[start:end] = chunk_vis.flatten()
+            
+        mlp_vis = mlp_vis.reshape(C_dim, N_dim)
     # Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()
     if sh_degree is None:
         # Colors are post-activation values, with shape [N, D] or [C, N, D]
