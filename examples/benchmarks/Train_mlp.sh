@@ -8,10 +8,10 @@ CKPT_ROOT="$EXAMPLES_DIR/results/benchmark"
 
 # Dedicated output root for this script.
 RESULT_ROOT="$EXAMPLES_DIR/results/mlp_checkpoint_new"
-TYPE="mlp-nonclone"
+TYPE="cuda"
 SCENE_LIST="kitchen garden bicycle bonsai counter room"
 RENDER_TRAJ_PATH="ellipse"
-GPU_ID=0
+GPU_ID=1
 
 for SCENE in $SCENE_LIST; do
     if [ "$SCENE" = "bonsai" ] || [ "$SCENE" = "counter" ] || [ "$SCENE" = "kitchen" ] || [ "$SCENE" = "room" ]; then

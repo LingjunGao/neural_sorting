@@ -91,9 +91,9 @@ class Config:
     max_steps: int = 20_000
     # Steps to evaluate the model
     # eval_steps: List[int] = field(default_factory=lambda: [7_000, 10_000])
-    eval_steps: List[int] = field(default_factory=lambda: list(range(0, Config.max_steps, 100)))
+    eval_steps: List[int] = field(default_factory=lambda: list(range(0, Config.max_steps, 1000)))
     # Steps to save the model
-    save_steps: List[int] = field(default_factory=lambda: list(range(0, Config.max_steps, 500)))
+    save_steps: List[int] = field(default_factory=lambda: list(range(0, Config.max_steps, 5000)))
     # save_steps: List[int] = field(default_factory=lambda: [7_000])
     # Whether to save ply file (storage size can be large)
     save_ply: bool = False
@@ -669,6 +669,7 @@ class Runner:
             colors = torch.cat([self.splats["sh0"], self.splats["shN"]], 1)  # [N, K, 3]
 
         rasterize_mode = "antialiased" if self.cfg.antialiased else "classic"
+        kwargs.pop("mlp", None)
         if cfg.type == "cuda":
             render_colors, render_alphas, info = rasterization(
             means=means,
@@ -677,7 +678,8 @@ class Runner:
             opacities=opacities,
             colors=colors,
             viewmats=torch.linalg.inv(camtoworlds),  # [C, 4, 4]
-            Ks=Ks,  # [C, 3, 3]
+            Ks=Ks,
+        mlp=self.mlp,  # [C, 3, 3]
             width=width,
             height=height,
             packed=self.cfg.packed,
@@ -701,15 +703,12 @@ class Runner:
                 opacities=opacities,
                 colors=colors,
                 viewmats=torch.linalg.inv(camtoworlds),  # [C, 4, 4]
-                Ks=Ks,  # [C, 3, 3]
+                Ks=Ks,
+        mlp=self.mlp,  # [C, 3, 3]
                 width=width,
                 height=height,
                 a=self.a,
-                b=self.b,
-                mlp=self.mlp,
                 # packed=self.cfg.packed,
-                # absgrad=(
-                #     self.cfg.strategy.absgrad
                 #     if isinstance(self.cfg.strategy, DefaultStrategy)
                 #     else False
                 # ),
@@ -821,6 +820,7 @@ class Runner:
             renders, alphas, info = self.rasterize_splats(
                 camtoworlds=camtoworlds,
                 Ks=Ks,
+        mlp=self.mlp,
                 width=width,
                 height=height,
                 sh_degree=sh_degree_to_use,
@@ -1099,6 +1099,7 @@ class Runner:
             colors, _, _ = self.rasterize_splats(
                 camtoworlds=camtoworlds,
                 Ks=Ks,
+        mlp=self.mlp,
                 width=width,
                 height=height,
                 sh_degree=cfg.sh_degree,
@@ -1207,6 +1208,7 @@ class Runner:
             renders, _, _ = self.rasterize_splats(
                 camtoworlds=camtoworlds,
                 Ks=Ks,
+        mlp=self.mlp,
                 width=width,
                 height=height,
                 sh_degree=cfg.sh_degree,
