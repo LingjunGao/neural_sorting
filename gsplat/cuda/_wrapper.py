@@ -565,6 +565,8 @@ def rasterize_to_pixels(
         colors.contiguous(),
         opacities.contiguous(),
         mlp_outs.contiguous() if mlp_outs is not None else None,
+        
+        
         backgrounds,
         masks,
         image_width,
@@ -646,6 +648,7 @@ def rasterize_to_indices_in_range(
         means2d.contiguous(),
         conics.contiguous(),
         opacities.contiguous(),
+        
         image_width,
         image_height,
         tile_size,
@@ -927,6 +930,7 @@ class _RasterizeToPixels(torch.autograd.Function):
             tile_size,
             isect_offsets,
             flatten_ids,
+            mlp_outs,
         )
         ctx.save_for_backward(
             means2d,
@@ -937,8 +941,10 @@ class _RasterizeToPixels(torch.autograd.Function):
             masks,
             isect_offsets,
             flatten_ids,
+            mlp_outs,
             render_alphas,
             last_ids,
+            render_colors,
         )
         ctx.width = width
         ctx.height = height
@@ -964,8 +970,10 @@ class _RasterizeToPixels(torch.autograd.Function):
             masks,
             isect_offsets,
             flatten_ids,
+            mlp_outs,
             render_alphas,
             last_ids,
+            render_colors,
         ) = ctx.saved_tensors
         width = ctx.width
         height = ctx.height
@@ -978,6 +986,7 @@ class _RasterizeToPixels(torch.autograd.Function):
             v_conics,
             v_colors,
             v_opacities,
+            v_mlp_outs,
         ) = _make_lazy_cuda_func("rasterize_to_pixels_3dgs_bwd")(
             means2d,
             conics,
@@ -992,6 +1001,8 @@ class _RasterizeToPixels(torch.autograd.Function):
             flatten_ids,
             render_alphas,
             last_ids,
+            render_colors,
+            mlp_outs,
             v_render_colors.contiguous(),
             v_render_alphas.contiguous(),
             absgrad,
@@ -1000,7 +1011,7 @@ class _RasterizeToPixels(torch.autograd.Function):
         if absgrad:
             means2d.absgrad = v_means2d_abs
 
-        if ctx.needs_input_grad[4]:
+        if ctx.needs_input_grad[5]:
             v_backgrounds = (v_render_colors * (1.0 - render_alphas).float()).sum(
                 dim=(1, 2)
             )
@@ -1012,6 +1023,7 @@ class _RasterizeToPixels(torch.autograd.Function):
             v_conics,
             v_colors,
             v_opacities,
+            v_mlp_outs if mlp_outs is not None else None,
             v_backgrounds,
             None,
             None,
@@ -1731,8 +1743,6 @@ def rasterize_to_pixels_2dgs(
         means2d.contiguous(),
         ray_transforms.contiguous(),
         colors.contiguous(),
-        opacities.contiguous(),
-        mlp_outs.contiguous() if mlp_outs is not None else None,
         normals.contiguous(),
         densify.contiguous(),
         backgrounds,
@@ -1819,10 +1829,8 @@ def rasterize_to_indices_in_range_2dgs(
         means2d.contiguous(),
         ray_transforms.contiguous(),
         opacities.contiguous(),
+        
         image_width,
-        image_height,
-        tile_size,
-        isect_offsets.contiguous(),
         flatten_ids.contiguous(),
     )
     out_pixel_ids = out_indices % (image_width * image_height)
@@ -1872,7 +1880,6 @@ class _RasterizeToPixels2DGS(torch.autograd.Function):
             height,
             tile_size,
             isect_offsets,
-            flatten_ids,
         )
 
         ctx.save_for_backward(
@@ -1885,7 +1892,6 @@ class _RasterizeToPixels2DGS(torch.autograd.Function):
             backgrounds,
             masks,
             isect_offsets,
-            flatten_ids,
             render_colors,
             render_alphas,
             last_ids,
@@ -1927,7 +1933,6 @@ class _RasterizeToPixels2DGS(torch.autograd.Function):
             backgrounds,
             masks,
             isect_offsets,
-            flatten_ids,
             render_colors,
             render_alphas,
             last_ids,
@@ -1959,7 +1964,6 @@ class _RasterizeToPixels2DGS(torch.autograd.Function):
             height,
             tile_size,
             isect_offsets,
-            flatten_ids,
             render_colors,
             render_alphas,
             last_ids,

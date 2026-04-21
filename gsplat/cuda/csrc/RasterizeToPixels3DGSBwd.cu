@@ -37,6 +37,8 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
         *__restrict__ render_alphas,      // [C, image_height, image_width, 1]
     const int32_t *__restrict__ last_ids, // [C, image_height, image_width]
     // grad outputs
+    const scalar_t *__restrict__ render_colors, // [C, image_height, image_width, CDIM]
+    const float *__restrict__ mlp_outs,
     const scalar_t *__restrict__ v_render_colors, // [C, image_height,
                                                   // image_width, CDIM]
     const scalar_t
@@ -46,7 +48,8 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
     vec2 *__restrict__ v_means2d,      // [C, N, 2] or [nnz, 2]
     vec3 *__restrict__ v_conics,       // [C, N, 3] or [nnz, 3]
     scalar_t *__restrict__ v_colors,   // [C, N, CDIM] or [nnz, CDIM]
-    scalar_t *__restrict__ v_opacities // [C, N] or [nnz]
+    scalar_t *__restrict__ v_opacities, // [C, N] or [nnz]
+    scalar_t *__restrict__ v_mlp_outs
 ) {
     auto block = cg::this_thread_block();
     uint32_t camera_id = block.group_index().x;
@@ -174,7 +177,12 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
                                       conic.z * delta.y * delta.y) +
                               conic.y * delta.x * delta.y;
                 vis = __expf(-sigma);
-                alpha = min(0.999f, opac * vis);
+                float vis_orig = min(0.999f, opac * vis);
+                if (mlp_outs != nullptr) {
+                    alpha = vis_orig * mlp_outs[id_batch[t]];
+                } else {
+                    alpha = vis_orig;
+                }
                 if (sigma < 0.f || alpha < 1.f / 255.f) {
                     valid = false;
                 }
@@ -189,35 +197,67 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
             vec2 v_xy_local = {0.f, 0.f};
             vec2 v_xy_abs_local = {0.f, 0.f};
             float v_opacity_local = 0.f;
+            float v_mlp_out_local = 0.f;
             // initialize everything to 0, only set if the lane is valid
             if (valid) {
-                // compute the current T for this gaussian
-                float ra = 1.0f / (1.0f - alpha);
-                T *= ra;
-                // update v_rgb for this gaussian
-                const float fac = alpha * T;
-#pragma unroll
-                for (uint32_t k = 0; k < CDIM; ++k) {
-                    v_rgb_local[k] = fac * v_render_c[k];
-                }
-                // contribution from this pixel
                 float v_alpha = 0.f;
-#pragma unroll
-                for (uint32_t k = 0; k < CDIM; ++k) {
-                    v_alpha += (rgbs_batch[t * CDIM + k] * T - buffer[k] * ra) *
-                               v_render_c[k];
-                }
-
-                v_alpha += T_final * ra * v_render_a;
-                // contribution from background pixel
-                if (backgrounds != nullptr) {
-                    float accum = 0.f;
+                // --- NEW LOGIC FOR MLP ---
+                if (mlp_outs != nullptr) {
+                    // Compute grads for weighted sum
+                    float sum_alpha = render_alphas[pix_id];
+                    float denom = sum_alpha + 1e-10f;
+                    
+                    float vis_orig = min(0.999f, opac * vis);
+                    float m = mlp_outs[id_batch[t]];
+                    float alpha_actual = vis_orig * m;
+                    
+                    // grad w.r.t color c_i
 #pragma unroll
                     for (uint32_t k = 0; k < CDIM; ++k) {
-                        accum += backgrounds[k] * v_render_c[k];
+                        v_rgb_local[k] = (alpha_actual / denom) * v_render_c[k];
                     }
-                    v_alpha += -T_final * ra * accum;
-                }
+                    
+                    // grad w.r.t alpha_actual
+                    float C_k_grad = 0.f;
+#pragma unroll
+                    for (uint32_t k = 0; k < CDIM; ++k) {
+                        float c_i = rgbs_batch[t * CDIM + k];
+                        float C_k = render_colors[pix_id * CDIM + k]; // already normalized in forward
+                        C_k_grad += v_render_c[k] * (c_i - C_k) / denom;
+                    }
+                    float dL_dalpha = C_k_grad + v_render_a;
+                    dL_dalpha = max(-1000.0f, min(1000.0f, dL_dalpha));
+                    dL_dalpha = max(-1000.0f, min(1000.0f, dL_dalpha));
+                    
+                    // grad w.r.t mlp_outs
+                    v_mlp_out_local = vis_orig * dL_dalpha;
+                    
+                    // grad w.r.t vis_orig (which goes into opac and sigma)
+                    v_alpha = m * dL_dalpha;
+
+                } else {
+                    // --- EXISTING VOLUMETRIC LOGIC ---
+                    float ra = 1.0f / (1.0f - alpha);
+                    T *= ra;
+                    const float fac = alpha * T;
+#pragma unroll
+                    for (uint32_t k = 0; k < CDIM; ++k) {
+                        v_rgb_local[k] = fac * v_render_c[k];
+                    }
+#pragma unroll
+                    for (uint32_t k = 0; k < CDIM; ++k) {
+                        v_alpha += (rgbs_batch[t * CDIM + k] * T - buffer[k] * ra) * v_render_c[k];
+                    }
+                    v_alpha += T_final * ra * v_render_a;
+                    if (backgrounds != nullptr) {
+                        float accum = 0.f;
+#pragma unroll
+                        for (uint32_t k = 0; k < CDIM; ++k) {
+                            accum += backgrounds[k] * v_render_c[k];
+                        }
+                        v_alpha += -T_final * ra * accum;
+                    }
+                } // END LOGIC SPLIT
 
                 if (opac * vis <= 0.999f) {
                     const float v_sigma = -opac * vis * v_alpha;
@@ -236,9 +276,11 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
                     v_opacity_local = vis * v_alpha;
                 }
 
+                if (mlp_outs == nullptr) {
 #pragma unroll
-                for (uint32_t k = 0; k < CDIM; ++k) {
-                    buffer[k] += rgbs_batch[t * CDIM + k] * fac;
+                    for (uint32_t k = 0; k < CDIM; ++k) {
+                        buffer[k] += rgbs_batch[t * CDIM + k] * (alpha * T);
+                    }
                 }
             }
             warpSum<CDIM>(v_rgb_local, warp);
@@ -248,6 +290,7 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
                 warpSum(v_xy_abs_local, warp);
             }
             warpSum(v_opacity_local, warp);
+            warpSum(v_mlp_out_local, warp);
             if (warp.thread_rank() == 0) {
                 int32_t g = id_batch[t]; // flatten index in [C * N] or [nnz]
                 float *v_rgb_ptr = (float *)(v_colors) + CDIM * g;
@@ -272,6 +315,9 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
                 }
 
                 gpuAtomicAdd(v_opacities + g, v_opacity_local);
+                if (v_mlp_outs != nullptr) {
+                    gpuAtomicAdd(v_mlp_outs + g, v_mlp_out_local);
+                }
             }
         }
     }
@@ -297,6 +343,8 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
     const at::Tensor render_alphas, // [C, image_height, image_width, 1]
     const at::Tensor last_ids,      // [C, image_height, image_width]
     // gradients of outputs
+    const at::optional<at::Tensor> render_colors,
+    const at::optional<at::Tensor> mlp_outs,
     const at::Tensor v_render_colors, // [C, image_height, image_width, 3]
     const at::Tensor v_render_alphas, // [C, image_height, image_width, 1]
     // outputs
@@ -304,7 +352,8 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
     at::Tensor v_means2d,                   // [C, N, 2] or [nnz, 2]
     at::Tensor v_conics,                    // [C, N, 3] or [nnz, 3]
     at::Tensor v_colors,                    // [C, N, 3] or [nnz, 3]
-    at::Tensor v_opacities                  // [C, N] or [nnz]
+    at::Tensor v_opacities,                 // [C, N] or [nnz]
+    c10::optional<at::Tensor> v_mlp_outs
 ) {
     bool packed = means2d.dim() == 2;
 
@@ -365,6 +414,8 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
             flatten_ids.data_ptr<int32_t>(),
             render_alphas.data_ptr<float>(),
             last_ids.data_ptr<int32_t>(),
+            render_colors.has_value() ? render_colors.value().data_ptr<float>() : nullptr,
+            mlp_outs.has_value() ? mlp_outs.value().data_ptr<float>() : nullptr,
             v_render_colors.data_ptr<float>(),
             v_render_alphas.data_ptr<float>(),
             v_means2d_abs.has_value()
@@ -375,7 +426,8 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
             reinterpret_cast<vec2 *>(v_means2d.data_ptr<float>()),
             reinterpret_cast<vec3 *>(v_conics.data_ptr<float>()),
             v_colors.data_ptr<float>(),
-            v_opacities.data_ptr<float>()
+            v_opacities.data_ptr<float>(),
+            v_mlp_outs.has_value() ? v_mlp_outs.value().data_ptr<float>() : nullptr
         );
 }
 
@@ -397,13 +449,16 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
         const at::Tensor flatten_ids,                                          \
         const at::Tensor render_alphas,                                        \
         const at::Tensor last_ids,                                             \
+        const at::optional<at::Tensor> render_colors,                          \
+        const at::optional<at::Tensor> mlp_outs,                               \
         const at::Tensor v_render_colors,                                      \
         const at::Tensor v_render_alphas,                                      \
         at::optional<at::Tensor> v_means2d_abs,                                \
         at::Tensor v_means2d,                                                  \
         at::Tensor v_conics,                                                   \
         at::Tensor v_colors,                                                   \
-        at::Tensor v_opacities                                                 \
+        at::Tensor v_opacities,                                                \
+        c10::optional<at::Tensor> v_mlp_outs                                   \
     );
 
 __INS__(1)

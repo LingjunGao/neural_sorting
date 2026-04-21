@@ -377,16 +377,17 @@ def rasterization(
         view_dir, _ = extract_view(viewmats, batch_depths.shape[0], True)
         
         from torch.utils.checkpoint import checkpoint
+        from torch.utils.checkpoint import checkpoint
         L = batch_depths.shape[0]
-        mlp_vis = batch_opacities.new_empty(L)
         chunk_size = 1000_000
         chunks = (L + chunk_size - 1) // chunk_size
+        mlp_vis_list = []
         for i in range(chunks):
             start = i * chunk_size
             end = min((i + 1) * chunk_size, L)
-            with torch.no_grad():
-                chunk_vis = checkpoint(mlp, batch_depths[start:end], view_dir[start:end], batch_opacities[start:end], use_reentrant=False)
-            mlp_vis[start:end] = chunk_vis.flatten()
+            chunk_vis = checkpoint(mlp, batch_depths[start:end], view_dir[start:end], batch_opacities[start:end], use_reentrant=False)
+            mlp_vis_list.append(chunk_vis.flatten())
+        mlp_vis = torch.cat(mlp_vis_list, dim=0) if len(mlp_vis_list) > 0 else batch_opacities.new_empty(0)
             
         if not packed:
             mlp_vis = mlp_vis.reshape(C_dim, N_dim)
@@ -623,13 +624,13 @@ def rasterization(
         )
     torch.cuda.synchronize()
     raster_time = time.time()-tic
-    print(f"proj_time={proj_time}")
-    print(f"sort_time={sort_time}")
-    print(f"raster_time={raster_time}")
+    # print(f"proj_time={proj_time}")
+    # print(f"sort_time={sort_time}")
+    # print(f"raster_time={raster_time}")
     sum = proj_time+sort_time+raster_time
-    print(f"proj_time_R={proj_time/sum}")
-    print(f"sort_time_R={sort_time/sum}")
-    print(f"raster_time_R={raster_time/sum}")
+    # print(f"proj_time_R={proj_time/sum}")
+    # print(f"sort_time_R={sort_time/sum}")
+    # print(f"raster_time_R={raster_time/sum}")
     
     if render_mode in ["ED", "RGB+ED"]:
         # normalize the accumulated depth to get the expected depth
@@ -780,16 +781,17 @@ def _rasterization(
         view_dir, _ = extract_view(viewmats, batch_depths.shape[0], True)
         
         from torch.utils.checkpoint import checkpoint
+        from torch.utils.checkpoint import checkpoint
         L = batch_depths.shape[0]
-        mlp_vis = batch_opacities.new_empty(L)
         chunk_size = 1000_000
         chunks = (L + chunk_size - 1) // chunk_size
+        mlp_vis_list = []
         for i in range(chunks):
             start = i * chunk_size
             end = min((i + 1) * chunk_size, L)
-            with torch.no_grad():
-                chunk_vis = checkpoint(mlp, batch_depths[start:end], view_dir[start:end], batch_opacities[start:end], use_reentrant=False)
-            mlp_vis[start:end] = chunk_vis.flatten()
+            chunk_vis = checkpoint(mlp, batch_depths[start:end], view_dir[start:end], batch_opacities[start:end], use_reentrant=False)
+            mlp_vis_list.append(chunk_vis.flatten())
+        mlp_vis = torch.cat(mlp_vis_list, dim=0) if len(mlp_vis_list) > 0 else batch_opacities.new_empty(0)
             
         mlp_vis = mlp_vis.reshape(C_dim, N_dim)
     # Turn colors into [C, N, D] or [nnz, D] to pass into rasterize_to_pixels()

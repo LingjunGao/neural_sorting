@@ -298,7 +298,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rasterize_to_pixels_3dgs_fwd_trai
     const at::Tensor flatten_ids,  // [n_isects]
     const at::optional<at::Tensor> mlp_outs
 );
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
 rasterize_to_pixels_3dgs_bwd(
     // Gaussian parameters
     const at::Tensor means2d,                   // [C, N, 2] or [nnz, 2]
@@ -317,6 +317,8 @@ rasterize_to_pixels_3dgs_bwd(
     // forward outputs
     const at::Tensor render_alphas, // [C, image_height, image_width, 1]
     const at::Tensor last_ids,      // [C, image_height, image_width]
+    const at::optional<at::Tensor> render_colors, // [C, image_height, image_width, CDIM]
+    const at::optional<at::Tensor> mlp_outs,
     // gradients of outputs
     const at::Tensor v_render_colors, // [C, image_height, image_width, 3]
     const at::Tensor v_render_alphas, // [C, image_height, image_width, 1]

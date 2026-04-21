@@ -79,6 +79,8 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
     // forward outputs
     const at::Tensor render_alphas, // [C, image_height, image_width, 1]
     const at::Tensor last_ids,      // [C, image_height, image_width]
+    const at::optional<at::Tensor> render_colors,
+    const at::optional<at::Tensor> mlp_outs,
     // gradients of outputs
     const at::Tensor v_render_colors, // [C, image_height, image_width, 3]
     const at::Tensor v_render_alphas, // [C, image_height, image_width, 1]
@@ -87,7 +89,8 @@ void launch_rasterize_to_pixels_3dgs_bwd_kernel(
     at::Tensor v_means2d,                   // [C, N, 2] or [nnz, 2]
     at::Tensor v_conics,                    // [C, N, 3] or [nnz, 3]
     at::Tensor v_colors,                    // [C, N, 3] or [nnz, 3]
-    at::Tensor v_opacities                  // [C, N] or [nnz]
+    at::Tensor v_opacities,                 // [C, N] or [nnz]
+    c10::optional<at::Tensor> v_mlp_outs
 );
 
 /////////////////////////////////////////////////

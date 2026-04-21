@@ -201,7 +201,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rasterize_to_pixels_3dgs_fwd_trai
     return std::make_tuple(renders, alphas, last_ids);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
 rasterize_to_pixels_3dgs_bwd(
     // Gaussian parameters
     const at::Tensor means2d,                   // [C, N, 2] or [nnz, 2]
@@ -220,6 +220,8 @@ rasterize_to_pixels_3dgs_bwd(
     // forward outputs
     const at::Tensor render_alphas, // [C, image_height, image_width, 1]
     const at::Tensor last_ids,      // [C, image_height, image_width]
+    const at::optional<at::Tensor> render_colors, // [C, image_height, image_width, CDIM]
+    const at::optional<at::Tensor> mlp_outs,
     // gradients of outputs
     const at::Tensor v_render_colors, // [C, image_height, image_width, 3]
     const at::Tensor v_render_alphas, // [C, image_height, image_width, 1]
@@ -250,6 +252,10 @@ rasterize_to_pixels_3dgs_bwd(
     at::Tensor v_conics = at::zeros_like(conics);
     at::Tensor v_colors = at::zeros_like(colors);
     at::Tensor v_opacities = at::zeros_like(opacities);
+    c10::optional<at::Tensor> v_mlp_outs;
+    if (mlp_outs.has_value()) {
+        v_mlp_outs = at::zeros_like(mlp_outs.value());
+    }
     at::Tensor v_means2d_abs;
     if (absgrad) {
         v_means2d_abs = at::zeros_like(means2d);
@@ -271,13 +277,16 @@ rasterize_to_pixels_3dgs_bwd(
             flatten_ids,                                                       \
             render_alphas,                                                     \
             last_ids,                                                          \
+            render_colors,                                                     \
+            mlp_outs,                                                          \
             v_render_colors,                                                   \
             v_render_alphas,                                                   \
             absgrad ? c10::optional<at::Tensor>(v_means2d_abs) : c10::nullopt, \
             v_means2d,                                                         \
             v_conics,                                                          \
             v_colors,                                                          \
-            v_opacities                                                        \
+            v_opacities,                                                       \
+            v_mlp_outs                                                         \
         );                                                                     \
         break;
 
@@ -310,7 +319,7 @@ rasterize_to_pixels_3dgs_bwd(
 #undef __LAUNCH_KERNEL__
 
     return std::make_tuple(
-        v_means2d_abs, v_means2d, v_conics, v_colors, v_opacities
+        v_means2d_abs, v_means2d, v_conics, v_colors, v_opacities, v_mlp_outs.has_value() ? v_mlp_outs.value() : at::Tensor()
     );
 }
 
