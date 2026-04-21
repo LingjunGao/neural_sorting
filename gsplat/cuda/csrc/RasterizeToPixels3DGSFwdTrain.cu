@@ -121,8 +121,9 @@ float alpha;
 float vis;
 float next_T = T;
 if (mlp_outs != nullptr) {
-alpha = min(0.999f, opac * expf(-sigma)) * mlp_outs[g];
-if (sigma < 0.f || alpha < 1.f / 255.f) continue;
+float vis_orig = min(0.999f, opac * expf(-sigma));
+if (sigma < 0.f || vis_orig < 1.f / 255.f) continue;
+alpha = vis_orig * mlp_outs[g];
 vis = alpha;
 next_T = T + alpha; 
 } else {

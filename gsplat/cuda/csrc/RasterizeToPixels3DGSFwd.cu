@@ -154,8 +154,9 @@ __global__ void rasterize_to_pixels_3dgs_fwd_kernel(
             float next_T = T;
             
             if (mlp_outs != nullptr) {
-                alpha = min(0.999f, opac * __expf(-sigma)) * mlp_outs[g];
-                if (sigma < 0.f || alpha < 1.f / 255.f) continue;
+                float vis_orig = min(0.999f, opac * __expf(-sigma));
+                if (sigma < 0.f || vis_orig < 1.f / 255.f) continue;
+                alpha = vis_orig * mlp_outs[g];
                 vis = alpha;
                 // For MLP mode, accumulate alpha sum into T temporarily
                 next_T = T + alpha; 

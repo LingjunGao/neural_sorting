@@ -167,6 +167,8 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
             vec2 delta;
             vec3 conic;
             float vis;
+            float vis_orig = 0.f;
+            float m = 1.f;
 
             if (valid) {
                 conic = conic_batch[t];
@@ -177,14 +179,19 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
                                       conic.z * delta.y * delta.y) +
                               conic.y * delta.x * delta.y;
                 vis = __expf(-sigma);
-                float vis_orig = min(0.999f, opac * vis);
                 if (mlp_outs != nullptr) {
-                    alpha = vis_orig * mlp_outs[id_batch[t]];
+                    vis_orig = min(0.999f, opac * vis);
+                    m = mlp_outs[id_batch[t]];
+                    alpha = vis_orig * m;
+                    if (sigma < 0.f || vis_orig < 1.f / 255.f) {
+                        valid = false;
+                    }
                 } else {
+                    vis_orig = min(0.999f, opac * vis);
                     alpha = vis_orig;
-                }
-                if (sigma < 0.f || alpha < 1.f / 255.f) {
-                    valid = false;
+                    if (sigma < 0.f || alpha < 1.f / 255.f) {
+                        valid = false;
+                    }
                 }
             }
 
@@ -206,9 +213,7 @@ __global__ void rasterize_to_pixels_3dgs_bwd_kernel(
                     // Compute grads for weighted sum
                     float sum_alpha = render_alphas[pix_id];
                     float denom = sum_alpha + 1e-10f;
-                    
-                    float vis_orig = min(0.999f, opac * vis);
-                    float m = mlp_outs[id_batch[t]];
+
                     float alpha_actual = vis_orig * m;
                     
                     // grad w.r.t color c_i
